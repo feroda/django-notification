@@ -145,7 +145,7 @@ class Notice(models.Model):
     sender = models.ForeignKey(User, null=True, related_name="sent_notices", verbose_name=_("sender"))
     message = models.TextField(_("message"))
     notice_type = models.ForeignKey(NoticeType, verbose_name=_("notice type"))
-    added = models.DateTimeField(_("added"), default=datetime.datetime.now)
+    added = models.DateTimeField(_("added"), default=datetime.datetime.now, auto_now_add=True)
     unseen = models.BooleanField(_("unseen"), default=True)
     archived = models.BooleanField(_("archived"), default=False)
     on_site = models.BooleanField(_("on site"))
@@ -179,6 +179,10 @@ class Notice(models.Model):
     
     def get_absolute_url(self):
         return reverse("notification_notice", args=[str(self.pk)])
+
+    def load_message(self):
+        extra_context = pickle.loads(self.message.decode("base64"))
+        return render_to_string("notification/%s/notice.html", extra_context)
 
 
 class NoticeQueueBatch(models.Model):
@@ -306,6 +310,14 @@ def send_now(users, label, extra_context=None, on_site=True, sender=None):
         for backend in NOTIFICATION_BACKENDS.values():
             if backend.can_send(user, notice_type):
                 backend.deliver(user, sender, notice_type, extra_context)
+
+        Notice.objects.create(
+            recipient=user,
+            sender=sender,
+            notice_type=notice_type,
+            on_site=on_site,
+            message=pickle.dumps(extra_context).encode("base64")
+        )
     
     # reset environment to original language
     activate(current_language)
